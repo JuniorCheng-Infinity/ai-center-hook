@@ -73,7 +73,7 @@ function readServerFromConfigToml(configPath) {
 		'print(json.dumps(tomllib.load(open(sys.argv[1], "rb")).get("mcp_servers", {}).get("ai-center", {})))',
 		configPath], { encoding: 'utf8', timeout: 5000 })
 	throw new Error(
-		`result ${result} \n`
+		`result ${JSON.stringify(result)} \n`
 	)
 	if (result.status !== 0) return undefined
 	const server = JSON.parse(result.stdout)
