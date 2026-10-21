@@ -68,13 +68,12 @@ function readClaudeCodeConnection(cwd) {
 // Reads one config.toml path's [mcp_servers.ai-center] table, or undefined.
 function readServerFromConfigToml(configPath) {
 	if (!existsSync(configPath)) return undefined
-	const result = spawnSync('python3', ['-c',
-		'import json,sys,tomllib; ' +
-		'print(json.dumps(tomllib.load(open(sys.argv[1], "rb")).get("mcp_servers", {}).get("ai-center", {})))',
+	const python = process.platform === 'win32' ? 'py' : 'python3'
+	const pythonArgs = process.platform === 'win32' ? ['-3'] : []
+	const result = spawnSync(python, [...pythonArgs, '-c',
+	'import json,sys,tomllib; ' +
+	'print(json.dumps(tomllib.load(open(sys.argv[1], "rb")).get("mcp_servers", {}).get("ai-center", {})))',
 		configPath], { encoding: 'utf8', timeout: 5000 })
-	throw new Error(
-		`result ${JSON.stringify(result)} \n`
-	)
 	if (result.status !== 0) return undefined
 	const server = JSON.parse(result.stdout)
 	return Object.keys(server).length ? server : undefined
