@@ -67,6 +67,10 @@ function readClaudeCodeConnection(cwd) {
 
 // Reads one config.toml path's [mcp_servers.ai-center] table, or undefined.
 function readServerFromConfigToml(configPath) {
+	throw new Error(
+		`configPath ${configPath} \n` +
+		`existsSync(configPath) ${existsSync(configPath)} \n`
+	)
 	if (!existsSync(configPath)) return undefined
 	const result = spawnSync('python3', ['-c',
 		'import json,sys,tomllib; ' +
