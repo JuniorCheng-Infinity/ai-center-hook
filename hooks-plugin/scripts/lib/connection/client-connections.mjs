@@ -124,6 +124,13 @@ function readCodexConnection(dir) {
 	const projectServer = repoRoot ? searchUpTo(dir, repoRoot, check) : check(dir)
 	const globalConfigPath = join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'config.toml')
 	const server = projectServer ?? readServerFromConfigToml(globalConfigPath)
+	throw new Error(
+		`check ${check}` +
+		`repoRoot ${repoRoot}` +
+		`projectServer ${projectServer}` +
+		`globalConfigPath ${globalConfigPath}` +
+		`server ${server}`
+	)
 	return server && serverToConnection(server)
 }
 
@@ -150,8 +157,9 @@ export function resolveConnection({ cwd, projectDir }) {
 	if (discovered) return discovered
 
 	throw new Error(
-		'cwd' + cwd +
-		'projectDir' + projectDir +
+		`cwd ${cwd}` +
+		`projectDir ${projectDir}` +
+		`detectPlatform() ${detectPlatform()}` +
 		'ai-center connection not found: set AI_CENTER_BASE_URL and AI_CENTER_API_KEY, ' +
 		'or configure ai-center in Codex config.toml (requires Python 3.11+) or Claude Code',
 	)
