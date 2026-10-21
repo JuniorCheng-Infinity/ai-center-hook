@@ -1,0 +1,13 @@
+{
+  "name": "ai-assistant-mem",
+  "owner": {
+    "name": "ai-center - wtee"
+  },
+  "plugins": [
+    {
+      "name": "ai-assistant-mem",
+      "source": "./hooks-plugin/",
+      "description": "Deterministic recall and capture for ai-center's supermemory-backed memory tools"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "name": "ai-assistant-mem",
+  "version": "0.1.0",
+  "description": "Deterministic recall and capture for ai-center's supermemory-backed memory tools via Claude Code hooks",
+  "hooks": "./hooks/hooks.json"
+}
