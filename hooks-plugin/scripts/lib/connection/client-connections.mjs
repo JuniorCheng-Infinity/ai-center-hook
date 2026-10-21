@@ -126,7 +126,7 @@ function readCodexConnection(dir) {
 	const server = projectServer ?? readServerFromConfigToml(globalConfigPath)
 	throw new Error(
 		`check ${check} \n` +
-		`searchUpTo(dir, repoRoot, check) ${searchUpTo(dir, repoRoot, check)} \n` +
+		// `searchUpTo(dir, repoRoot, check) ${searchUpTo(dir, repoRoot, check)} \n` +
 		`check(dir) ${check(dir)} \n` +
 		`repoRoot ${repoRoot} \n` +
 		`projectServer ${projectServer} \n` +
