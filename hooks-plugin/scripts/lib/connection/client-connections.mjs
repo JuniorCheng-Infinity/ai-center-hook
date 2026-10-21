@@ -5,9 +5,9 @@ import { spawnSync } from 'node:child_process'
 import { readJsonFile, resolveDirs } from '../hook-utils.mjs'
 
 // What each client calls itself. The backend maps these names to its client types, so they must not change.
-export const PLATFORM = { 
-	claudeCode: 'claude-code', 
-	codex: 'codex-mcp-client' 
+export const PLATFORM = {
+	claudeCode: 'claude-code',
+	codex: 'codex-mcp-client'
 }
 
 // Read from the hook's environment (CLAUDECODE, or a .codex/ plugin root), which neither vendor documents.
@@ -70,7 +70,7 @@ function readServerFromConfigToml(configPath) {
 	if (!existsSync(configPath)) return undefined
 	const result = spawnSync('python3', ['-c',
 		'import json,sys,tomllib; ' +
-			'print(json.dumps(tomllib.load(open(sys.argv[1], "rb")).get("mcp_servers", {}).get("ai-center", {})))',
+		'print(json.dumps(tomllib.load(open(sys.argv[1], "rb")).get("mcp_servers", {}).get("ai-center", {})))',
 		configPath], { encoding: 'utf8', timeout: 5000 })
 	if (result.status !== 0) return undefined
 	const server = JSON.parse(result.stdout)
@@ -150,8 +150,10 @@ export function resolveConnection({ cwd, projectDir }) {
 	if (discovered) return discovered
 
 	throw new Error(
+		'cwd' + cwd +
+		'projectDir' + projectDir +
 		'ai-center connection not found: set AI_CENTER_BASE_URL and AI_CENTER_API_KEY, ' +
-			'or configure ai-center in Codex config.toml (requires Python 3.11+) or Claude Code',
+		'or configure ai-center in Codex config.toml (requires Python 3.11+) or Claude Code',
 	)
 }
 
