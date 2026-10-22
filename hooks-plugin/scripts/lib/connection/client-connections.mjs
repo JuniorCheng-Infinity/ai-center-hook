@@ -74,6 +74,10 @@ function readServerFromConfigToml(configPath) {
 	'import json,sys,tomllib; ' +
 	'print(json.dumps(tomllib.load(open(sys.argv[1], "rb")).get("mcp_servers", {}).get("ai-center", {})))',
 		configPath], { encoding: 'utf8', timeout: 5000 })
+	throw new Error(
+		`configPath ${configPath} \n` +
+		`result ${JSON.stringify(result)}`
+	)
 	if (result.status !== 0) return undefined
 	const server = JSON.parse(result.stdout)
 	return Object.keys(server).length ? server : undefined
@@ -126,16 +130,16 @@ function readCodexConnection(dir) {
 	const projectServer = repoRoot ? searchUpTo(dir, repoRoot, check) : check(dir)
 	const globalConfigPath = join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'config.toml')
 	const server = projectServer ?? readServerFromConfigToml(globalConfigPath)
-	throw new Error(
-		`check ${check} \n` +
-		`dir ${dir} \n` +
-		// `searchUpTo(dir, repoRoot, check) ${searchUpTo(dir, repoRoot, check)} \n` +
-		`check(dir) ${check(dir)} \n` +
-		`repoRoot ${repoRoot} \n` +
-		`projectServer ${projectServer} \n` +
-		`globalConfigPath ${globalConfigPath} \n` +
-		`server ${server}`
-	)
+	// throw new Error(
+	// 	`check ${check} \n` +
+	// 	`dir ${dir} \n` +
+	// 	// `searchUpTo(dir, repoRoot, check) ${searchUpTo(dir, repoRoot, check)} \n` +
+	// 	`check(dir) ${check(dir)} \n` +
+	// 	`repoRoot ${repoRoot} \n` +
+	// 	`projectServer ${projectServer} \n` +
+	// 	`globalConfigPath ${globalConfigPath} \n` +
+	// 	`server ${server}`
+	// )
 	return server && serverToConnection(server)
 }
 
