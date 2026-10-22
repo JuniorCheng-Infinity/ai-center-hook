@@ -134,7 +134,7 @@ function readCodexConnection(dir) {
 		`check ${check} \n` +
 		`dir ${dir} \n` +
 		// `searchUpTo(dir, repoRoot, check) ${searchUpTo(dir, repoRoot, check)} \n` +
-		`check(dir) ${check(dir)} \n` +
+		`check(dir) ${JSON.stringify(check(dir))} \n` +
 		`repoRoot ${repoRoot} \n` +
 		`projectServer ${projectServer} \n` +
 		`globalConfigPath ${globalConfigPath} \n` +
