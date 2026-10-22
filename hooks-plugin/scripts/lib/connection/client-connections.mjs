@@ -130,16 +130,16 @@ function readCodexConnection(dir) {
 	const projectServer = repoRoot ? searchUpTo(dir, repoRoot, check) : check(dir)
 	const globalConfigPath = join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'config.toml')
 	const server = projectServer ?? readServerFromConfigToml(globalConfigPath)
-	throw new Error(
-		`check ${check} \n` +
-		`dir ${dir} \n` +
-		// `searchUpTo(dir, repoRoot, check) ${searchUpTo(dir, repoRoot, check)} \n` +
-		`check(dir) ${JSON.stringify(check(dir))} \n` +
-		`repoRoot ${repoRoot} \n` +
-		`projectServer ${projectServer} \n` +
-		`globalConfigPath ${globalConfigPath} \n` +
-		`server ${server}`
-	)
+	// throw new Error(
+	// 	`check ${check} \n` +
+	// 	`dir ${dir} \n` +
+	// 	// `searchUpTo(dir, repoRoot, check) ${searchUpTo(dir, repoRoot, check)} \n` +
+	// 	`check(dir) ${JSON.stringify(check(dir))} \n` +
+	// 	`repoRoot ${repoRoot} \n` +
+	// 	`projectServer ${projectServer} \n` +
+	// 	`globalConfigPath ${globalConfigPath} \n` +
+	// 	`server ${server}`
+	// )
 	return server && serverToConnection(server)
 }
 
