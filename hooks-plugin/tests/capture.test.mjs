@@ -26,7 +26,7 @@ test('configured Stop command captures Codex and Claude payloads', () => {
 			assert.equal(result.status, 0)
 			assert.equal(result.stderr, '')
 			return readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse)
-				.filter((call) => call.params?.name === 'memory_add').at(-1).params.arguments
+				.filter((call) => call.params?.name === 'document_add').at(-1).params.arguments
 		}
 		for (const platform of ['codex', 'claude']) {
 			const transcript = join(dir, platform + '.jsonl')
@@ -90,7 +90,7 @@ test('tool-observer.mjs, kept but switched off, still records one tool call when
 			assert.equal(result.status, 0)
 			assert.equal(result.stderr, '')
 			return readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse)
-				.filter((call) => call.params?.name === 'memory_add').at(-1).params.arguments
+				.filter((call) => call.params?.name === 'document_add').at(-1).params.arguments
 		}
 		const tool = observe({ cwd: dir, tool_name: 'Bash', tool_input: { command: 'echo ok' }, tool_response: 'ok' })
 		assert.equal(tool.project_id, 42)
@@ -113,8 +113,8 @@ test('tool-observer.mjs, kept but switched off, does not capture calls to ai-cen
 		// The script is run by its path, because its matcher in hooks.json is switched off.
 		const handler = { command: `node "${join(root, 'scripts/tool-observer.mjs')}"` }
 		// Claude Code spells the server name with a hyphen, Codex with an underscore.
-		const aiCenterTools = ['mcp__ai-center__memory_add', 'mcp__ai-center__memory_search',
-			'mcp__ai_center__memory_add', 'mcp__ai_center__memory_search']
+		const aiCenterTools = ['mcp__ai-center__document_add', 'mcp__ai-center__memory_search',
+			'mcp__ai_center__document_add', 'mcp__ai_center__memory_search']
 		for (const tool of aiCenterTools) {
 			const input = { cwd: dir, tool_name: tool, tool_input: { query: 'x' }, tool_response: 'y' }
 			const result = spawnSync(handler.command, { shell: true, input: JSON.stringify(input), env, encoding: 'utf8' })
@@ -126,7 +126,7 @@ test('tool-observer.mjs, kept but switched off, does not capture calls to ai-cen
 		const recorded = existsSync(calls)
 			? readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse)
 			: []
-		assert.equal(recorded.filter((call) => call.params?.name === 'memory_add').length, 0)
+		assert.equal(recorded.filter((call) => call.params?.name === 'document_add').length, 0)
 	} finally {
 		rmSync(dir, { recursive: true, force: true })
 	}
@@ -134,7 +134,7 @@ test('tool-observer.mjs, kept but switched off, does not capture calls to ai-cen
 
 // Shared setup for the Stop-hook tests: a temp dir, a fake network that records
 // every request, and `stop(entries, reply)` which runs the Stop hook against a
-// transcript made of `entries` and returns only the memory_add arguments of that run.
+// transcript made of `entries` and returns only the document_add arguments of that run.
 function setupStopRun(platform) {
 	const dir = mkdtempSync(join(tmpdir(), 'ai-center-hooks-test-'))
 	const calls = join(dir, 'calls.jsonl')
@@ -160,13 +160,13 @@ function setupStopRun(platform) {
 		// A skipped hook makes no network request, so the calls file may not exist.
 		if (!existsSync(calls)) return []
 		return readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse)
-			.filter((call) => call.params?.name === 'memory_add').map((call) => call.params.arguments)
+			.filter((call) => call.params?.name === 'document_add').map((call) => call.params.arguments)
 	}
-	// The _meta of every memory_add the last Stop sent.
+	// The _meta of every document_add the last Stop sent.
 	const sentMeta = () => {
 		if (!existsSync(calls)) return []
 		return readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse)
-			.filter((call) => call.params?.name === 'memory_add').map((call) => call.params._meta)
+			.filter((call) => call.params?.name === 'document_add').map((call) => call.params._meta)
 	}
 	return { stop, sentMeta, cleanup: () => rmSync(dir, { recursive: true, force: true }) }
 }
@@ -191,7 +191,7 @@ const codexMcpCall = (tool) => ({ type: 'event_msg', payload: { type: 'item_comp
 test('Stop logs every turn, including turns where the agent wrote to memory', () => {
 	const { stop, cleanup } = setupStopRun()
 	try {
-		for (const tool of ['memory_add', 'memory_update']) {
+		for (const tool of ['document_add', 'document_update']) {
 			const turns = {
 				claude: [claudeUser('Record this fact'), claudeToolUse(`mcp__ai-center__${tool}`), claudeToolResult()],
 				codex: [codexUser('Record this fact'), codexMcpCall(tool)],

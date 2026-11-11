@@ -1,117 +1,82 @@
-#!/usr/bin/env node
-// A repeat Stop in the same turn updates that note instead of adding a second one.
-// The first Stop of a turn searches for the earlier note of the same work and updates it when the hook wrote it itself;
-// otherwise it adds. Either way the decision travels in _meta for the request monitor, never into the memory.
-import { AiCenterError, callToolWithRequestId, resolveProjectId } from './lib/connection/ai-center-mcp.mjs'
-import { readAddContentLimit, readTurnNoteIds, writeTurnNoteId } from './lib/connection/cache.mjs'
+import {
+	AiCenterError,
+	callToolWithRequestId,
+	resolveProjectId,
+} from './lib/connection/ai-center-mcp.mjs'
+import {
+	readAddContentLimit,
+	readTurnNoteIds,
+	buildTurnNoteScope,
+	withTurnNoteLock,
+	writeTurnNoteId,
+} from './lib/connection/cache.mjs'
 import { detectPlatform, resolveHookConnection } from './lib/connection/client-connections.mjs'
-import { contentSummarizer } from './lib/note/content-summarizer.mjs'
+import { summarizeContent } from './lib/note/content-summarizer.mjs'
 import { promptFormatter, usageFormatter } from './lib/note/field-formatter.mjs'
 import { runAiCenterHook } from './lib/connection/hook-failures.mjs'
-import { errorMessage, readStdinJson } from './lib/hook-utils.mjs'
-import { DEFAULT_ADD_CONTENT_MAX_CHARS, memoryAddTurn } from './lib/note/memory-handler.mjs'
-import { chooseNoteToUpdate, lookupQuery } from './lib/note/note-lookup.mjs'
+import { errorMessage, parseToolResult, readStdinJson } from './lib/hook-utils.mjs'
+import { DEFAULT_ADD_CONTENT_MAX_CHARS, buildTurnNote } from './lib/note/memory-handler.mjs'
+import { chooseNoteToUpdate, buildLookupQuery, hasNoSourceDocuments } from './lib/note/note-lookup.mjs'
 import { readTurn } from './lib/note/turn-transcript.mjs'
 
-const SEARCH_TIMEOUT_MS = 5_000
+const SEARCH_TIMEOUT_MS = 30_000
 
 // Looks for the earlier note of the same work. A search that fails never costs the note: it is added instead.
-async function chooseEarlierNote(connection, projectId, query) {
+async function searchEarlierNote(connection, projectId, query) {
 	let searchRequestId = null
 	try {
 		const search = await callToolWithRequestId(
 			connection,
 			'memory_search',
-			{ 
-				project_id: projectId, query 
+			{
+				project_id: projectId,
+				query,
 			},
-			{ 
-				timeoutMs: SEARCH_TIMEOUT_MS 
+			{
+				timeoutMs: SEARCH_TIMEOUT_MS
 			},
 		)
 		searchRequestId = search.requestId
-		const hits = JSON.parse(search.result.content[0].text)
-		const chosen = chooseNoteToUpdate(hits, new Set(Object.values(readTurnNoteIds())))
+		const hits = parseToolResult(search.result)
+		const chosen = chooseNoteToUpdate(hits)
 		if (chosen) {
 			const reason = 'most similar earlier turn note'
-			return { 
-				noteId: chosen.id, 
-				lookup: { 
-					searchRequestId, 
-					decision: 'update', 
-					reason, 
-					selectedId: chosen.id 
-				} 
-			}
+			return { noteId: chosen.included.document.id, lookup: { searchRequestId, decision: 'update', reason, selectedId: chosen.id } }
 		}
-		return {
-			lookup: { 
-				searchRequestId, 
-				decision: 'add', 
-				reason: 'no earlier turn note found', 
-				selectedId: null 
-			}
-		}
+		const reason = hasNoSourceDocuments(hits)
+			? 'no earlier turn note found, and the hits name no source document (is search.include.documents on?)'
+			: 'no earlier turn note found'
+		return { lookup: { searchRequestId, decision: 'add', reason, selectedId: null } }
 	} catch (error) {
 		const reason = `search failed: ${errorMessage(error)}`
 		const failedId = searchRequestId ?? error.requestId ?? null
-		return { 
-			lookup: { 
-				searchRequestId: failedId, 
-				decision: 'add', 
-				reason, 
-				selectedId: null 
-			} 
-		}
+		return { lookup: { searchRequestId: failedId, decision: 'add', reason, selectedId: null } }
 	}
 }
 
-async function addNote(connection, projectId, content, usage, lookup) {
-	const { result } = await callToolWithRequestId(
-		connection,
-		'memory_add',
-		{ 
-			project_id: projectId, 
-			content 
-		},
-		{
-			usage, 
-			lookup 
-		},
-	)
-	return result
-}
-
+// Add and update share the same request path and monitoring metadata.
 async function saveNote(connection, projectId, content, { noteId, lookup }, usage) {
-	if (noteId) {
-		try {
-			const { result } = await callToolWithRequestId(
-				connection,
-				'memory_update',
-				{
-					project_id: projectId,
-					memory_id: noteId,
-					new_content: content
-				},
-				{ 
-					usage, 
-					lookup 
-				},
-			)
-			return result
-		} catch (error) {
-			// A note that no longer exists (404) is added again; any other failure is reported.
-			if (!(error instanceof AiCenterError) || error.statusCode !== 404) throw error
-			const gone = { ...lookup, decision: 'add', reason: `${lookup.reason}, but the note no longer exists` }
-			return addNote(connection, projectId, content, usage, gone)
-		}
+	try {
+		const { result } = await callToolWithRequestId(
+			connection,
+			noteId ? 'document_update' : 'document_add',
+			noteId
+				? { project_id: projectId, document_id: noteId, new_content: content }
+				: { project_id: projectId, content },
+			{ usage, lookup },
+		)
+		return result
+	} catch (error) {
+		// Only a missing update target falls back to add. Other failures must not create duplicates.
+		if (!noteId || !(error instanceof AiCenterError) || error.statusCode !== 404) throw error
+		const gone = { ...lookup, decision: 'add', reason: `${lookup.reason}, but the note no longer exists` }
+		return saveNote(connection, projectId, content, { lookup: gone }, usage)
 	}
-	return addNote(connection, projectId, content, usage, lookup)
 }
 
-function savedNoteId(result) {
+function readSavedNoteId(result) {
 	try {
-		const { id } = JSON.parse(result.content[0].text)
+		const { id } = parseToolResult(result)
 		return typeof id === 'string' ? id : undefined
 	} catch {
 		return undefined
@@ -143,19 +108,35 @@ await runAiCenterHook(async () => {
 	// A turn that is too long for one note is summarized. A failed summary throws before anything is saved,
 	// and the hook reports it, so the loss is visible and can be debugged.
 	const limit = readAddContentLimit(connection) ?? DEFAULT_ADD_CONTENT_MAX_CHARS
-	const summarize = (text, budget) => contentSummarizer(text, { budget, platform })
-	const content = await memoryAddTurn({ prompt, thinking, response }, limit, summarize)
+	const summarize = (text, budget) => summarizeContent(text, { budget, platform })
+	const content = await buildTurnNote({ prompt, thinking, response }, limit, summarize)
 
 	// Claude Code identifies a turn by prompt_id, Codex by turn_id.
 	const turnId = input.prompt_id ?? input.turn_id
-	const knownNoteId = turnId ? readTurnNoteIds()[turnId] : undefined
-	// A repeat Stop already knows its note, so it does not search again.
-	const sameTurn = { searchRequestId: null, decision: 'update', reason: 'same turn', selectedId: knownNoteId }
-	const choice = knownNoteId
-		? { noteId: knownNoteId, lookup: sameTurn }
-		: await chooseEarlierNote(connection, projectId, lookupQuery({ prompt, response }))
-	const result = await saveNote(connection, projectId, content, choice, usage)
+	const scope = buildTurnNoteScope(connection, projectId, platform, input, transcriptPath)
+	const readKnownNoteId = () => (turnId && scope ? readTurnNoteIds(scope)[turnId] : undefined)
 
-	const noteId = savedNoteId(result)
-	if (turnId && noteId) writeTurnNoteId(turnId, noteId)
+	// A repeat Stop already knows its note, so it does not search. The search only reads, so it runs before the lock and
+	// the lock is held for the save alone.
+	const earlier = readKnownNoteId()
+		? undefined
+		: await searchEarlierNote(connection, projectId, buildLookupQuery({ prompt, response }))
+
+	const persist = async () => {
+		// Read after acquiring the lock so the preceding save's ID is visible.
+		const sameTurnNoteId = readKnownNoteId()
+		const sameTurn = { searchRequestId: null, decision: 'update', reason: 'same turn', selectedId: sameTurnNoteId }
+		const newTurn = { searchRequestId: null, decision: 'add', reason: 'new conversation turn', selectedId: null }
+		const choice = sameTurnNoteId ? { noteId: sameTurnNoteId, lookup: sameTurn } : earlier ?? { lookup: newTurn }
+		const result = await saveNote(connection, projectId, content, choice, usage)
+
+		const noteId = readSavedNoteId(result)
+		if (turnId && scope && noteId) writeTurnNoteId(scope, turnId, noteId)
+	}
+
+	if (scope) {
+		await withTurnNoteLock(scope, persist)
+	} else {
+		await persist()
+	}
 })

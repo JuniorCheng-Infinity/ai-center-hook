@@ -9,8 +9,8 @@ import { runAiCenterHook } from './lib/connection/hook-failures.mjs'
 import { readStdinJson } from './lib/hook-utils.mjs'
 
 await runAiCenterHook(async () => {
-  const input = await readStdinJson()
-  const connection = resolveHookConnection(input)
+	const input = await readStdinJson()
+	const connection = resolveHookConnection(input)
 
-  clearProjectCache(connection)
+	clearProjectCache(connection)
 })

@@ -13,11 +13,11 @@ test('a failed tool call is shown with its status code and info, and recorded', 
 		const result = run('turn-note.mjs', stopInput(dir), 'tool-error')
 		assert.equal(
 			message(result),
-			`ai-center memory: turn-note failed - memory_add HTTP 403, ${FAKE_ERRORS.noPermission}`,
+			`ai-center memory: turn-note failed - document_add HTTP 403, ${FAKE_ERRORS.noPermission}`,
 		)
 		const [failure] = failures()
 		assert.equal(failure.hook, 'turn-note')
-		assert.equal(failure.operation, 'memory_add')
+		assert.equal(failure.operation, 'document_add')
 		assert.equal(failure.endpoint, '/api/client/mcp')
 		assert.equal(failure.method, 'POST')
 		assert.equal(failure.status_code, 403)
@@ -26,7 +26,7 @@ test('a failed tool call is shown with its status code and info, and recorded', 
 		assert.ok(failure.created_datetime)
 		assert.ok(Number.isInteger(failure.latency_ms))
 		// The same id goes to the server, so a local line can be matched to its request_log_tbl row.
-		const memoryAdd = sentRequests().find((request) => request.params?.name === 'memory_add')
+		const memoryAdd = sentRequests().find((request) => request.params?.name === 'document_add')
 		assert.equal(memoryAdd.headers['x-request-id'], failure.request_id)
 	} finally {
 		cleanup()
@@ -80,7 +80,7 @@ test('a long message is shown in full', () => {
 		const result = run('turn-note.mjs', stopInput(dir), 'server-error')
 		assert.equal(
 			message(result),
-			`ai-center memory: turn-note failed - memory_add HTTP 500, ${FAKE_ERRORS.unexpected}`,
+			`ai-center memory: turn-note failed - document_add HTTP 500, ${FAKE_ERRORS.unexpected}`,
 		)
 	} finally {
 		cleanup()
@@ -141,7 +141,8 @@ test('the next prompt shows one summary of the pending failures, once', () => {
 	const { dir, run, message, cleanup } = setupHookRun()
 	try {
 		run('tool-observer.mjs', toolUse(dir), 'tool-error')
-		run('context.mjs', { cwd: dir, hook_event_name: 'SessionStart' }, 'unreachable')
+		// Only the progress hook always asks the server for the project first; the rules hook reads the cached one.
+		run('context.mjs progress', { cwd: dir, hook_event_name: 'SessionStart' }, 'unreachable')
 		const prompt = { cwd: dir, hook_event_name: 'UserPromptSubmit', prompt: 'next question' }
 		assert.equal(
 			message(run('failure-summary.mjs', prompt)),

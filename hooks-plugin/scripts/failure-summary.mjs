@@ -4,8 +4,8 @@ import { runAiCenterHook, takePendingSummary } from './lib/connection/hook-failu
 import { readStdinJson } from './lib/hook-utils.mjs'
 
 await runAiCenterHook(async () => {
-  await readStdinJson()
+	await readStdinJson()
 
-  const summary = takePendingSummary()
-  if (summary) process.stdout.write(JSON.stringify({ systemMessage: summary }))
+	const summary = takePendingSummary()
+	if (summary) process.stdout.write(JSON.stringify({ systemMessage: summary }))
 })

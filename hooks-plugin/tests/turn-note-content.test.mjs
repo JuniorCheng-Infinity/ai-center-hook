@@ -33,12 +33,12 @@ function fakeClaude(dir, { exitCode = 0, answer = 'FAKE SUMMARY' } = {}) {
 	return { PATH: `${bin}:${process.env.PATH}`, CLAUDECODE: '1', guardFile }
 }
 
-const addedContent = (toolCalls) => toolCalls.filter((call) => call.name === 'memory_add').map((call) => call.arguments.content)
+const addedContent = (toolCalls) => toolCalls.filter((call) => call.name === 'document_add').map((call) => call.arguments.content)
 
-// The usage text of every memory_add, read from the _meta of its request; undefined when the call carried none.
+// The usage text of every document_add, read from the _meta of its request; undefined when the call carried none.
 const usageSent = (requests) =>
 	requests
-		.filter((request) => request.method === 'tools/call' && request.params.name === 'memory_add')
+		.filter((request) => request.method === 'tools/call' && request.params.name === 'document_add')
 		.map((request) => request.params._meta?.['ai-center/usage'])
 
 test('a normal turn saves the text as typed, and its tools and skills travel in _meta, not in the note', () => {

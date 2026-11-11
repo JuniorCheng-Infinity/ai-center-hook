@@ -15,7 +15,7 @@ async function callWithReply(reply) {
 	const saved = globalThis.fetch
 	globalThis.fetch = async () => ({ status: 200, text: async () => `data: ${JSON.stringify(reply)}\n\n` })
 	try {
-		return await callTool(connection, 'memory_add', {})
+		return await callTool(connection, 'document_add', {})
 	} finally {
 		globalThis.fetch = saved
 	}
@@ -86,7 +86,7 @@ test('every call gets its own request id', async () => {
 test('the lookup record rides in _meta next to the usage, and never in the arguments', async () => {
 	const lookup = { searchRequestId: 'search-1', decision: 'add', reason: 'no match found', selectedId: null }
 	const { sent } = await callAndKeepRequests(() =>
-		callToolWithRequestId(connection, 'memory_add', { content: 'note' }, { usage: 'tool: Read', lookup }),
+		callToolWithRequestId(connection, 'document_add', { content: 'note' }, { usage: 'tool: Read', lookup }),
 	)
 	const { _meta, arguments: args } = sent[0].body.params
 	assert.deepEqual(_meta[LOOKUP_META_KEY], lookup)
@@ -96,7 +96,7 @@ test('the lookup record rides in _meta next to the usage, and never in the argum
 
 test('callTool still sends the usage and still returns only the result', async () => {
 	const { returned, sent } = await callAndKeepRequests(() =>
-		callTool(connection, 'memory_add', {}, undefined, 'tool: Bash'),
+		callTool(connection, 'document_add', {}, undefined, 'tool: Bash'),
 	)
 	assert.deepEqual(returned, { content: [] })
 	assert.equal(sent[0].body.params._meta[USAGE_META_KEY], 'tool: Bash')

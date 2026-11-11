@@ -62,11 +62,12 @@ function isRepeat(failure, earlier) {
 		Date.now() - Date.parse(entry.created_datetime) < REPEAT_WINDOW_MS)
 }
 
-// Shows the failure now when this event can show it, otherwise leaves it for the next prompt's summary.
-export function reportFailure(error) {
+// Shows the failure live when this event can show it and the caller allows it, otherwise leaves it for the
+// next prompt's summary.
+export function reportFailure(error, { showLive = true } = {}) {
 	try {
 		const failure = buildFailure(error)
-		const canShow = VISIBLE_EVENTS.has(getHookInput().hook_event_name)
+		const canShow = showLive && VISIBLE_EVENTS.has(getHookInput().hook_event_name)
 		failure.display = !canShow ? 'pending' : isRepeat(failure, readFailures()) ? 'suppressed' : 'now'
 		appendFailure(failure)
 		process.stderr.write(`ai-center hook error: ${describe(failure)}\n`)

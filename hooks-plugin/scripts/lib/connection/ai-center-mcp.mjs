@@ -3,12 +3,12 @@
 import { randomUUID } from 'node:crypto'
 import { readProjectCache, writeProjectCache } from './cache.mjs'
 import { detectPlatform } from './client-connections.mjs'
-import { errorMessage, logWarning, parseJson } from '../hook-utils.mjs'
+import { errorMessage, logWarning, parseJson, parseToolResult } from '../hook-utils.mjs'
 
 const PROTOCOL_VERSION = '2025-06-18'
 const MCP_ENDPOINT = '/api/client/mcp'
 const REQUEST_TIMEOUT_MS = 8_000
-// Optional lookup: kept short so SessionStart (initialize, this, memory_search) stays inside its own timeout.
+// Optional lookup (the add limit): kept short so SessionStart stays inside its own timeout.
 const LIMIT_LOOKUP_TIMEOUT_MS = 3_000
 const DATA_LINE_PREFIX = 'data: '
 
@@ -150,7 +150,7 @@ async function fetchAddContentLimit(connection) {
 		{ jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} },
 		LIMIT_LOOKUP_TIMEOUT_MS,
 	)
-	const addTool = result.tools?.find((tool) => tool.name === 'memory_add')
+	const addTool = result.tools?.find((tool) => tool.name === 'document_add')
 	const maxLength = addTool?.inputSchema?.properties?.content?.maxLength
 	return Number.isInteger(maxLength) && maxLength > 0 ? maxLength : undefined
 }
@@ -159,9 +159,9 @@ async function fetchAddContentLimit(connection) {
 export async function resolveAndCacheProject(connection) {
 	const init = await initialize(connection)
 	const project = resolveProjectFromInstructions(init.instructions)
-	// A missing limit is not fatal: callers fall back to the backend's default.
+	// A missing limit is not fatal: the backend's default is used instead.
 	const addContentMaxChars = await fetchAddContentLimit(connection).catch((error) => {
-		logWarning('memory_add limit lookup failed', error)
+		logWarning('document_add limit lookup failed', error)
 	})
 	writeProjectCache(connection, project.id, addContentMaxChars)
 	return project
@@ -171,4 +171,11 @@ export async function resolveProjectId(connection) {
 	const cached = readProjectCache(connection)
 	if (cached !== undefined) return cached
 	return (await resolveAndCacheProject(connection)).id
+}
+
+// The caller's own id. Asked on every run and never cached, so a stale id can never narrow the user scope.
+export async function fetchUserId(connection) {
+	const { user } = parseToolResult(await callTool(connection, 'get_me', {}))
+	if (!Number.isInteger(user?.id)) throw new Error('ai-center: get_me returned no user id')
+	return user.id
 }

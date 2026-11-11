@@ -12,7 +12,8 @@ import {
 } from 'node:fs'
 import { dirname } from 'node:path'
 
-// Plumbing every hook script needs: reading stdin, small JSON files and file ranges, and running a hook.
+// Plumbing every hook script needs: reading stdin, small JSON files and file ranges, reading a tool's reply,
+// handing context to the harness, and running a hook.
 // None of it knows how ai-center is reached. The one exception is the variable below, which lives here
 // because runHook reads it and the summarizer, which sets it, already imports this file.
 
@@ -29,6 +30,16 @@ export function getHookInput() {
 export async function readStdinJson() {
 	hookInput = await parseStdinJson()
 	return hookInput
+}
+
+// The harness adds this text to the model's context.
+export function writeHookContext(hookEventName, additionalContext) {
+	process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext } }))
+}
+
+// The JSON a tool answered with. A reply without text, or with text that is not JSON, throws.
+export function parseToolResult(result) {
+	return JSON.parse(result.content[0].text)
 }
 
 // Returns undefined when the text is not JSON.

@@ -52,7 +52,7 @@ export function findRegisteredAncestor(config, startDir) {
 // The one place a stored MCP server entry becomes a connection, for both clients.
 // The key may come with or without its "Bearer " prefix, and the short /mcp suffix and the old
 // /api/client/mcp one give the same bare origin.
-export function connectionFormatter(url, authorization) {
+export function buildConnection(url, authorization) {
 	const apiKey = typeof authorization === 'string' ? authorization.replace(/^Bearer\s+/i, '') : undefined
 	if (typeof url !== 'string' || !url || !apiKey) return undefined
 	return { baseUrl: url.replace(/\/(?:api\/client\/)?mcp\/?$/, ''), apiKey }
@@ -62,22 +62,16 @@ function readClaudeCodeConnection(cwd) {
 	const config = readJsonFile(join(homedir(), '.claude.json'), undefined, '~/.claude.json failed to read')
 	if (!config) return undefined
 	const server = findRegisteredAncestor(config, cwd)
-	return connectionFormatter(server?.url, server?.headers?.Authorization)
+	return buildConnection(server?.url, server?.headers?.Authorization)
 }
 
 // Reads one config.toml path's [mcp_servers.ai-center] table, or undefined.
 function readServerFromConfigToml(configPath) {
 	if (!existsSync(configPath)) return undefined
-	const python = process.platform === 'win32' ? 'py' : 'python3.12'
-	const pythonArgs = process.platform === 'win32' ? ['-3'] : []
-	const result = spawnSync(python, [...pythonArgs, '-c',
-	'import json,sys,tomllib; ' +
-	'print(json.dumps(tomllib.load(open(sys.argv[1], "rb")).get("mcp_servers", {}).get("ai-center", {})))',
+	const result = spawnSync('python3', ['-c',
+		'import json,sys,tomllib; ' +
+			'print(json.dumps(tomllib.load(open(sys.argv[1], "rb")).get("mcp_servers", {}).get("ai-center", {})))',
 		configPath], { encoding: 'utf8', timeout: 5000 })
-	// throw new Error(
-	// 	`configPath ${configPath} \n` +
-	// 	`result ${JSON.stringify(result)}`
-	// )
 	if (result.status !== 0) return undefined
 	const server = JSON.parse(result.stdout)
 	return Object.keys(server).length ? server : undefined
@@ -88,7 +82,7 @@ function serverToConnection(server) {
 	const authorization = server.bearer_token_env_var
 		? process.env[server.bearer_token_env_var]
 		: server.http_headers?.Authorization
-	return connectionFormatter(server.url, authorization)
+	return buildConnection(server.url, authorization)
 }
 
 // Removes the [mcp_servers.ai-center] table and its sub-tables from raw TOML and leaves the rest untouched.
@@ -130,16 +124,6 @@ function readCodexConnection(dir) {
 	const projectServer = repoRoot ? searchUpTo(dir, repoRoot, check) : check(dir)
 	const globalConfigPath = join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'config.toml')
 	const server = projectServer ?? readServerFromConfigToml(globalConfigPath)
-	// throw new Error(
-	// 	`check ${check} \n` +
-	// 	`dir ${dir} \n` +
-	// 	// `searchUpTo(dir, repoRoot, check) ${searchUpTo(dir, repoRoot, check)} \n` +
-	// 	`check(dir) ${JSON.stringify(check(dir))} \n` +
-	// 	`repoRoot ${repoRoot} \n` +
-	// 	`projectServer ${projectServer} \n` +
-	// 	`globalConfigPath ${globalConfigPath} \n` +
-	// 	`server ${server}`
-	// )
 	return server && serverToConnection(server)
 }
 
@@ -166,11 +150,8 @@ export function resolveConnection({ cwd, projectDir }) {
 	if (discovered) return discovered
 
 	throw new Error(
-		`cwd ${cwd}` +
-		`projectDir ${projectDir}` +
-		`detectPlatform() ${detectPlatform()}` +
 		'ai-center connection not found: set AI_CENTER_BASE_URL and AI_CENTER_API_KEY, ' +
-		'or configure ai-center in Codex config.toml (requires Python 3.11+) or Claude Code',
+			'or configure ai-center in Codex config.toml (requires Python 3.11+) or Claude Code',
 	)
 }
 

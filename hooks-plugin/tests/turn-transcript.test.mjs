@@ -228,7 +228,7 @@ const codexMcpCall = (turnId, server, tool, status = 'completed') => ({
 test('Codex: an MCP call event is listed as an MCP tool, and only for its own turn', () => {
 	const entries = [
 		codexSaid('t0', 'user', 'old request'),
-		codexMcpCall('t0', 'ai-center', 'memory_add'),
+		codexMcpCall('t0', 'ai-center', 'document_add'),
 		codexSaid('t0', 'assistant', 'old answer'),
 		codexSaid('t1', 'user', 'search it'),
 		codexIn('t1', { type: 'custom_tool_call', name: 'exec' }),
@@ -237,9 +237,12 @@ test('Codex: an MCP call event is listed as an MCP tool, and only for its own tu
 		codexMcpCall('t1', 'mysql', 'query'),
 		codexSaid('t1', 'assistant', 'done'),
 	]
-	const turn = withTranscript(entries, (path) => readTurn(path, undefined, CODEX))
-	assert.deepEqual(turn.tools, ['exec'])
-	assert.deepEqual(turn.mcp, ['mcp__ai-center__memory_search', 'mcp__mysql__query'])
+	for (const platform of [CODEX, undefined]) {
+		const turn = withTranscript(entries, (path) => readTurn(path, undefined, platform))
+		assert.deepEqual(turn.prompts, ['search it'])
+		assert.deepEqual(turn.tools, ['exec'])
+		assert.deepEqual(turn.mcp, ['mcp__ai-center__memory_search', 'mcp__mysql__query'])
+	}
 })
 
 test('Codex: an exec call that reads a skills/<name>/SKILL.md counts that skill as used', () => {

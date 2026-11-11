@@ -94,7 +94,7 @@ function readAnswer(outFile, stdout) {
 	}
 }
 
-export async function contentSummarizer(text, { budget, platform, run = runCommand }) {
+export async function summarizeContent(text, { budget, platform, run = runCommand }) {
 	// Only codex writes its answer to a file, so only a codex run gets a folder for it.
 	const workDir = platform === PLATFORM.codex ? mkdtempSync(join(tmpdir(), 'ai-center-summary-')) : undefined
 	try {

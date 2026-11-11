@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { contentSummarizer, runCommand, SummaryError } from '../scripts/lib/note/content-summarizer.mjs'
+import { summarizeContent, runCommand, SummaryError } from '../scripts/lib/note/content-summarizer.mjs'
 import { SUMMARY_RUN_ENV } from '../scripts/lib/hook-utils.mjs'
 
 const CLAUDE = 'claude-code'
@@ -27,7 +27,7 @@ test('asks claude -p for the summary, text on stdin, guard variable set, CLAUDEC
 	const { run, calls } = fakeRun({ status: 0, stdout: '  short text \n' })
 	process.env.CLAUDECODE = '1'
 	try {
-		const summary = await contentSummarizer('x'.repeat(500), { budget: 100, platform: CLAUDE, run })
+		const summary = await summarizeContent('x'.repeat(500), { budget: 100, platform: CLAUDE, run })
 		assert.equal(summary, 'short text')
 	} finally {
 		delete process.env.CLAUDECODE
@@ -42,13 +42,13 @@ test('asks claude -p for the summary, text on stdin, guard variable set, CLAUDEC
 
 test('asks for 60% of the budget, because models overshoot a limit', async () => {
 	const { run, calls } = fakeRun()
-	await contentSummarizer('some long text', { budget: 1000, platform: CLAUDE, run })
+	await summarizeContent('some long text', { budget: 1000, platform: CLAUDE, run })
 	assert.match(calls[0].input, /at most 600 characters/)
 })
 
 test('asks codex exec with hooks disabled and reads the answer from the output file', async () => {
 	const { run, calls } = fakeRun({ status: 0, stdout: '', writeOutFile: ' codex summary \n' })
-	const summary = await contentSummarizer('some long text', { budget: 100, platform: CODEX, run })
+	const summary = await summarizeContent('some long text', { budget: 100, platform: CODEX, run })
 	assert.equal(summary, 'codex summary')
 	assert.equal(calls[0].file, 'codex')
 	for (const flag of ['exec', '--ephemeral', '--ignore-user-config', '--disable', 'hooks', '-o']) {
@@ -60,27 +60,27 @@ test('asks codex exec with hooks disabled and reads the answer from the output f
 
 test('rejects a summary that is still over the budget', async () => {
 	const { run } = fakeRun({ status: 0, stdout: 'y'.repeat(101) })
-	await rejectsWith(contentSummarizer('text', { budget: 100, platform: CLAUDE, run }), /over the 100 budget/)
+	await rejectsWith(summarizeContent('text', { budget: 100, platform: CLAUDE, run }), /over the 100 budget/)
 })
 
 test('rejects an empty summary', async () => {
 	const { run } = fakeRun({ status: 0, stdout: '  \n' })
-	await rejectsWith(contentSummarizer('text', { budget: 100, platform: CLAUDE, run }), /empty/)
+	await rejectsWith(summarizeContent('text', { budget: 100, platform: CLAUDE, run }), /empty/)
 })
 
 test('rejects when the command exits with an error', async () => {
 	const { run } = fakeRun({ status: 1, stdout: '' })
-	await rejectsWith(contentSummarizer('text', { budget: 100, platform: CLAUDE, run }), /exited with 1/)
+	await rejectsWith(summarizeContent('text', { budget: 100, platform: CLAUDE, run }), /exited with 1/)
 })
 
 test('rejects when the command times out or cannot start', async () => {
 	const { run } = fakeRun({ status: null, stdout: '', error: 'timed out after 100s' })
-	await rejectsWith(contentSummarizer('text', { budget: 100, platform: CLAUDE, run }), /timed out after 100s/)
+	await rejectsWith(summarizeContent('text', { budget: 100, platform: CLAUDE, run }), /timed out after 100s/)
 })
 
 test('rejects an unknown platform without starting anything', async () => {
 	const { run, calls } = fakeRun()
-	await rejectsWith(contentSummarizer('text', { budget: 100, platform: undefined, run }), /no summarizer for platform unknown/)
+	await rejectsWith(summarizeContent('text', { budget: 100, platform: undefined, run }), /no summarizer for platform unknown/)
 	assert.equal(calls.length, 0)
 })
 
@@ -105,7 +105,7 @@ test('a claude run creates no temporary folder, because only codex needs one', a
 			during = readdirSync(own)
 			return { status: 0, stdout: 'short text' }
 		}
-		await contentSummarizer('text', { budget: 100, platform: CLAUDE, run })
+		await summarizeContent('text', { budget: 100, platform: CLAUDE, run })
 		assert.deepEqual(during, [])
 		assert.deepEqual(readdirSync(own), [])
 	})
@@ -119,7 +119,7 @@ test('a codex run has its temporary folder while it runs and none afterwards', a
 			writeFileSync(args[args.indexOf('-o') + 1], 'codex summary')
 			return { status: 0, stdout: '' }
 		}
-		await contentSummarizer('text', { budget: 100, platform: CODEX, run })
+		await summarizeContent('text', { budget: 100, platform: CODEX, run })
 		assert.equal(during.length, 1)
 		assert.deepEqual(readdirSync(own), [])
 	})
@@ -128,7 +128,7 @@ test('a codex run has its temporary folder while it runs and none afterwards', a
 test('a failed codex run leaves no temporary folder behind either', async () => {
 	await withOwnTmp(async (own) => {
 		const run = async () => ({ status: 1, stdout: '' })
-		await rejectsWith(contentSummarizer('text', { budget: 100, platform: CODEX, run }), /exited with 1/)
+		await rejectsWith(summarizeContent('text', { budget: 100, platform: CODEX, run }), /exited with 1/)
 		assert.deepEqual(readdirSync(own), [])
 	})
 })

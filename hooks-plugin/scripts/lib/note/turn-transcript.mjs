@@ -1,4 +1,3 @@
-// Client-specific transcript formats and shared extraction of a single turn.
 import { statSync } from 'node:fs'
 import { PLATFORM } from '../connection/client-connections.mjs'
 import { parseJson, readHead, readTail } from '../hook-utils.mjs'
@@ -44,7 +43,6 @@ function extractUserText(content) {
 
 const isPrompt = (entry) => entry.type === 'user' && !entry.isMeta && isGenuineUserText(entry.message?.content)
 
-// With a prompt id the prompt is the first user text carrying it; without one it is the latest user text.
 function findPromptIndex(entries, promptId) {
 	if (promptId) return entries.findIndex((entry) => entry.promptId === promptId && isPrompt(entry))
 	return entries.findLastIndex(isPrompt)
@@ -64,7 +62,7 @@ function normalizeCodexMcpCall(item) {
 }
 
 // Codex has no Skill tool: it uses a skill by reading .../skills/<name>/SKILL.md through a shell call.
-function skillsReadBy(payload) {
+function findSkillsRead(payload) {
 	const code = [payload.input, payload.arguments].find((value) => typeof value === 'string') ?? ''
 	return [...code.matchAll(SKILL_FILE_PATH)].map((match) => match[1]).filter((name) => !/^\.+$/.test(name))
 }
@@ -103,7 +101,7 @@ function normalizeCodexEntry(entry) {
 	}
 	// A tool call keeps its name; a skill it reads is added as a Skill call, which is how the lists find it.
 	if (payload?.type === 'custom_tool_call' || payload?.type === 'function_call') {
-		const skillCalls = skillsReadBy(payload).map((skill) => ({ type: 'tool_use', name: 'Skill', input: { skill } }))
+		const skillCalls = findSkillsRead(payload).map((skill) => ({ type: 'tool_use', name: 'Skill', input: { skill } }))
 		return { type: 'assistant', message: { content: [{ type: 'tool_use', name: payload.name }, ...skillCalls] } }
 	}
 	return undefined
@@ -121,7 +119,9 @@ function normalizeEntry(entry, platform) {
 	if (platform === PLATFORM.claudeCode) return normalizeClaudeEntry(entry)
 	if (platform === PLATFORM.codex) return normalizeCodex(entry)
 	// Unknown environments retain support through the transcript's record shape.
-	return entry?.type === 'response_item' ? normalizeCodex(entry) : normalizeClaudeEntry(entry)
+	return entry?.type === 'response_item' || entry?.type === 'event_msg'
+		? normalizeCodex(entry)
+		: normalizeClaudeEntry(entry)
 }
 
 const SKILL_BODY_PREFIX = 'Base directory for this skill:'
@@ -129,7 +129,9 @@ const COMMAND_NAME = /<command-name>\/?([^<]+)<\/command-name>/
 const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/
 
 const isSkillBody = (entry) =>
-	entry?.type === 'user' && entry.isMeta === true && extractUserText(entry.message?.content).startsWith(SKILL_BODY_PREFIX)
+	entry?.type === 'user' &&
+	entry.isMeta === true &&
+	extractUserText(entry.message?.content).startsWith(SKILL_BODY_PREFIX)
 
 // A slash command is a skill only when the skill body follows it, so built-ins like /resume stay system text.
 // The command is rewritten to the text the user typed, which makes it a prompt.
@@ -147,7 +149,7 @@ function withSkillCommands(entries) {
 	})
 }
 
-// Names in first-use order. The Skill tool is listed as a skill, and MCP tools apart from the other tools.
+// Names in first-use order.
 function extractUsage(entries) {
 	const skills = new Set()
 	const tools = new Set()
@@ -168,7 +170,7 @@ function extractUsage(entries) {
 }
 
 // Claude: an assistant step that is not a tool call ends the turn it belongs to. A subagent's own steps do not.
-const endsTurn = (entry) =>
+const isTurnEnd = (entry) =>
 	entry.type === 'assistant' &&
 	!entry.isSidechain &&
 	typeof entry.message?.stop_reason === 'string' &&
@@ -178,7 +180,7 @@ const endsTurn = (entry) =>
 // (a follow-up typed while the AI worked, or a prompt after an interrupt), so it is bounded by the turn id (Codex)
 // or by the assistant steps that end turns (Claude). Without either, it runs from the prompt to the next prompt.
 // openStart says the turn may have begun before the entries that were read.
-function turnRange(entries, promptIndex) {
+function findTurnRange(entries, promptIndex) {
 	const turnId = entries[promptIndex].turnId
 	if (turnId) {
 		const start = entries.findIndex((entry) => entry.turnId === turnId)
@@ -186,11 +188,11 @@ function turnRange(entries, promptIndex) {
 		return { start, end, openStart: start === 0 }
 	}
 
-	if (entries.some(endsTurn)) {
+	if (entries.some(isTurnEnd)) {
 		let start = promptIndex
-		while (start > 0 && !endsTurn(entries[start - 1])) start--
+		while (start > 0 && !isTurnEnd(entries[start - 1])) start--
 		let last = promptIndex
-		while (last < entries.length - 1 && !endsTurn(entries[last])) last++
+		while (last < entries.length - 1 && !isTurnEnd(entries[last])) last++
 		return { start, end: last + 1, openStart: start === 0 }
 	}
 
@@ -214,12 +216,11 @@ function extractTurn(transcriptText, promptId, platform, canGrow = false) {
 	const promptIndex = findPromptIndex(withCommands, promptId)
 	if (promptIndex === -1) return undefined
 
-	const { start, end, openStart } = turnRange(withCommands, promptIndex)
+	const { start, end, openStart } = findTurnRange(withCommands, promptIndex)
 	// A larger window may show the start of the turn, so it is tried before settling for a partial turn.
 	if (openStart && canGrow) return undefined
 
 	const turnEntries = withCommands.slice(start, end)
-	// prompt is the one the hook identified; prompts is every prompt of the turn, in order.
 	const prompt = extractUserText(withCommands[promptIndex].message?.content)
 	const prompts = turnEntries.filter(isPrompt).map((entry) => extractUserText(entry.message?.content))
 	const thinking = turnEntries

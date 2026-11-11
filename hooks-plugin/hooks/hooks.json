@@ -1,13 +1,18 @@
 {
-  "description": "ai-center memory hooks: deterministic recall and capture via memory_search/memory_add",
+  "description": "ai-center memory hooks: deterministic recall and capture via memory_search/document_add",
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|resume|clear|compact",
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/context.mjs\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/context.mjs\" rules",
+            "timeout": 20
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/context.mjs\" progress",
             "timeout": 20
           }
         ]
@@ -32,7 +37,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/turn-note.mjs\"",
-            "timeout": 120
+            "timeout": 180
           }
         ]
       }
@@ -43,7 +48,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/session-end.mjs\"",
-            "timeout": 10
+            "timeout": 3
           }
         ]
       }
@@ -64,7 +69,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/memory-recall.mjs\"",
-            "timeout": 10
+            "timeout": 20
           }
         ]
       }
