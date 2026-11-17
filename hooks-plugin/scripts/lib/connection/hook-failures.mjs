@@ -3,11 +3,11 @@ import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from
 import { basename, join } from 'node:path'
 import { AiCenterError } from './ai-center-mcp.mjs'
 import { CACHE_DIR } from './cache.mjs'
-import { errorMessage, getHookInput, readJsonFile, runHook, writeJsonFile } from '../hook-utils.mjs'
+import { errorMessage, getHookInput, readJsonFile, runHook, writeHookNotice, writeJsonFile } from '../hook-utils.mjs'
 
 const FAILURE_LOG = join(CACHE_DIR, 'failures.jsonl')
 const SUMMARY_CURSOR = join(CACHE_DIR, 'failures-summary.json')
-// Only these events show a systemMessage on screen (checked in Claude Code, documented for Codex).
+// Shown at once only in these events, and SessionStart must stay out, since its own JSON output must be alone.
 const VISIBLE_EVENTS = new Set(['UserPromptSubmit', 'Stop'])
 const REPEAT_WINDOW_MS = 60_000
 const MAX_LOG_BYTES = 100_000
@@ -72,9 +72,7 @@ export function reportFailure(error, { showLive = true } = {}) {
 		appendFailure(failure)
 		process.stderr.write(`ai-center hook error: ${describe(failure)}\n`)
 		if (failure.display === 'now') {
-			process.stdout.write(
-				JSON.stringify({ systemMessage: `ai-center memory: ${failure.hook} failed - ${describe(failure)}` }),
-			)
+			writeHookNotice(`ai-center memory: ${failure.hook} failed - ${describe(failure)}`)
 		}
 	} catch (loggingError) {
 		process.stderr.write(

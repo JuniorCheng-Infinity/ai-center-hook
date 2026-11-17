@@ -90,19 +90,29 @@ function lockIsAbandoned(lockPath) {
 	}
 }
 
+// Makes the file only when it does not exist yet and says whether this call made it, even when runs overlap.
+export function createFileOnce(path, content = '') {
+	try {
+		const fd = openSync(path, 'wx', 0o600)
+		try {
+			writeSync(fd, content)
+		} finally {
+			closeSync(fd)
+		}
+		return true
+	} catch (error) {
+		if (error.code === 'EEXIST') return false
+		throw error
+	}
+}
+
 async function acquireTurnNoteLock(lockPath) {
 	const deadline = Date.now() + LOCK_WAIT_MS
 	for (;;) {
 		try {
-			const fd = openSync(lockPath, 'wx', 0o600)
-			try {
-				writeSync(fd, String(process.pid))
-			} finally {
-				closeSync(fd)
-			}
-			return
+			if (createFileOnce(lockPath, String(process.pid))) return
 		} catch (error) {
-			if (error.code !== 'EEXIST') throw new Error(`Cannot acquire turn-note lock: ${error.message}`)
+			throw new Error(`Cannot acquire turn-note lock: ${error.message}`)
 		}
 		if (lockIsAbandoned(lockPath)) rmSync(lockPath, { force: true })
 		else if (Date.now() >= deadline) throw new Error('Timed out waiting for the turn-note save lock')
@@ -143,15 +153,20 @@ export function writeTurnNoteId(scope, turnId, memoryId) {
 	writeJsonFile(getTurnNotesPath(scope), Object.fromEntries(recent), 'cache failed to write turn notes')
 }
 
-// A session rewrites its file every turn, so a file untouched for a day belongs to a session that is over.
-export function pruneTurnNoteFiles() {
+// Removes the files starting with `prefix` that nothing has touched for `maxAgeMs`.
+export function pruneCacheFiles(prefix, maxAgeMs) {
 	try {
-		const cutoff = Date.now() - TURN_NOTE_FILE_MAX_AGE_MS
+		const cutoff = Date.now() - maxAgeMs
 		for (const name of readdirSync(CACHE_DIR)) {
 			const path = join(CACHE_DIR, name)
-			if (name.startsWith('turn-notes') && statSync(path).mtimeMs < cutoff) rmSync(path, { force: true })
+			if (name.startsWith(prefix) && statSync(path).mtimeMs < cutoff) rmSync(path, { force: true })
 		}
 	} catch (error) {
-		if (error.code !== 'ENOENT') logWarning('cache failed to prune turn notes', error)
+		if (error.code !== 'ENOENT') logWarning(`cache failed to prune ${prefix}`, error)
 	}
+}
+
+// A session rewrites its file every turn, so a file untouched for a day belongs to a session that is over.
+export function pruneTurnNoteFiles() {
+	pruneCacheFiles('turn-notes', TURN_NOTE_FILE_MAX_AGE_MS)
 }

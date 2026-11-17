@@ -5,11 +5,26 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { resolveHookConnection } from '../scripts/lib/connection/client-connections.mjs'
-import { parseToolResult } from '../scripts/lib/hook-utils.mjs'
+import { parseToolResult, writeHookNotice } from '../scripts/lib/hook-utils.mjs'
 
 import { setupHookRun } from './fake-ai-center.mjs'
 
 const failuresUrl = new URL('../scripts/lib/connection/hook-failures.mjs', import.meta.url).href
+
+test('writeHookNotice prints one JSON object with only a systemMessage', () => {
+	const saved = process.stdout.write
+	let printed = ''
+	process.stdout.write = (text) => {
+		printed += text
+		return true
+	}
+	try {
+		writeHookNotice('line one\nline two')
+	} finally {
+		process.stdout.write = saved
+	}
+	assert.deepEqual(JSON.parse(printed), { systemMessage: 'line one\nline two' })
+})
 
 test('resolveHookConnection finds the connection from the directory in the hook input', () => {
 	const dir = mkdtempSync(join(tmpdir(), 'ai-center-helper-test-'))

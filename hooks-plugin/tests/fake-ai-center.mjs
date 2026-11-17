@@ -47,7 +47,8 @@ const toolReply = (tool, args) => {
 	return {}
 }
 globalThis.fetch = async (url, options) => {
-	const body = JSON.parse(options.body)
+	const isGet = options.method === 'GET'
+	const body = isGet ? { method: 'GET', url } : JSON.parse(options.body)
 	const tool = body.params?.name
 	const args = body.params?.arguments ?? {}
 	const saved = toolReply(tool, args)
@@ -61,6 +62,8 @@ globalThis.fetch = async (url, options) => {
 	if (mode === 'timeout') throw Object.assign(new Error('timed out'), { name: 'TimeoutError' })
 	if (mode === 'http-401') return reply(401, '{"error":"unauthorized"}')
 	if (mode === 'bad-gateway') return reply(502, '<html>Bad Gateway</html>')
+	if (isGet && mode === 'server-error') return memoryError(500, errors.unexpected)
+	if (isGet) return reply(200, process.env.FAKE_RELEASE ?? '{}')
 	if (mode === 'rpc-error') return reply(200, 'data: {"error":{"message":"Invalid request"}}\\n\\n')
 	if (mode === 'bad-data-line') return reply(200, 'data: not json\\n\\n')
 	if (tool && mode === 'tool-error') return memoryError(403, errors.noPermission)
@@ -114,10 +117,10 @@ export function setupHookRun() {
 	}
 
 	// Runs one script by hand, for the cases hooks.json can never produce, such as a wrong argument.
-	function runScript(file, args, input) {
+	function runScript(file, args, input, mode = '', extraEnv = {}) {
 		const result = spawnSync(process.execPath, [join(root, 'scripts', file), ...args], {
 			input: JSON.stringify({ session_id: 'test-session', ...input }),
-			env: { ...env, FETCH_MODE: '' },
+			env: { ...env, FETCH_MODE: mode, ...extraEnv },
 			encoding: 'utf8',
 		})
 		assert.equal(result.error, undefined)
@@ -172,6 +175,8 @@ export function setupHookRun() {
 
 	return {
 		dir,
+		root,
+		env,
 		run,
 		runScript,
 		message,
@@ -182,5 +187,35 @@ export function setupHookRun() {
 		toolCalls,
 		writeCalls,
 		cleanup: () => rmSync(dir, { recursive: true, force: true }),
+	}
+}
+
+// In-process tests: fetch is replaced by `reply` while `run` goes, and every request it is asked is kept. No network
+// is touched. Gives back what `run` gave back, or the error it threw, together with the requests.
+export async function withFakeFetch(reply, run) {
+	const saved = globalThis.fetch
+	const sent = []
+	globalThis.fetch = async (url, options) => {
+		sent.push({ url, options })
+		return reply(options)
+	}
+	try {
+		return { result: await run(), sent }
+	} catch (error) {
+		return { error, sent }
+	} finally {
+		globalThis.fetch = saved
+	}
+}
+
+export const textReply = (status, text) => () => ({ status, text: async () => text })
+
+// A new empty folder for one test, removed afterwards. `body` gets its path.
+export function inTempFolder(body) {
+	const dir = mkdtempSync(join(tmpdir(), 'ai-center-test-'))
+	try {
+		return body(dir)
+	} finally {
+		rmSync(dir, { recursive: true, force: true })
 	}
 }

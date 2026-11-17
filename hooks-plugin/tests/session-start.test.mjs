@@ -65,7 +65,8 @@ test('SessionStart runs the rules hook and the progress hook under one matcher t
 	const root = resolve('hooks-plugin')
 	const config = JSON.parse(readFileSync(join(root, 'hooks/hooks.json'), 'utf8'))
 	const [group, ...others] = config.hooks.SessionStart
-	assert.equal(others.length, 0)
+	// The update notice is the one other group, and it has its own test in notice.test.mjs.
+	assert.equal(others.length, 1)
 	assert.equal(group.matcher, 'startup|resume|clear|compact|fork')
 	assert.equal(group.hooks.length, 2)
 	assert.match(group.hooks[0].command, /\/scripts\/context\.mjs" rules$/)

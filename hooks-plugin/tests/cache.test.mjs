@@ -1,11 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { buildTurnNoteScope } from '../scripts/lib/connection/cache.mjs'
+import { buildTurnNoteScope, createFileOnce } from '../scripts/lib/connection/cache.mjs'
+import { inTempFolder } from './fake-ai-center.mjs'
 
 const cacheUrl = new URL('../scripts/lib/connection/cache.mjs', import.meta.url).href
 const lockOwnerScript = `
@@ -24,7 +25,10 @@ function inFakeHome(script) {
 			`import { existsSync, mkdirSync, readFileSync, readdirSync, utimesSync, writeFileSync } from 'node:fs'`,
 			`import { spawn } from 'node:child_process'`,
 			`import { once } from 'node:events'`,
-			`import { pruneTurnNoteFiles, readAddContentLimit, readProjectCache, withTurnNoteLock, writeProjectCache } from ${JSON.stringify(cacheUrl)}`,
+			`import {
+					pruneCacheFiles, pruneTurnNoteFiles, readAddContentLimit, readProjectCache,
+					withTurnNoteLock, writeProjectCache,
+				} from ${JSON.stringify(cacheUrl)}`,
 			`const connection = { baseUrl: 'http://cache.test', apiKey: 'key' }`,
 			`const dir = process.env.HOME + '/.cache/ai-center-hooks'`,
 			`const overwrite = (text) => writeFileSync(dir + '/' + readdirSync(dir).find((name) => name.endsWith('.json')), text)`,
@@ -99,6 +103,47 @@ test('turn-note files untouched for a day are removed, and nothing else is', () 
 
 test('pruning without a cache folder does nothing and does not stop the hook', () => {
 	assert.deepEqual(inFakeHome('pruneTurnNoteFiles(); console.log("{}")'), {})
+})
+
+test('createFileOnce makes the file with the content given and says it did', () => {
+	inTempFolder((dir) => {
+		const path = join(dir, 'marker')
+		assert.equal(createFileOnce(path, 'first'), true)
+		assert.equal(readFileSync(path, 'utf8'), 'first')
+		assert.equal(statSync(path).mode & 0o777, 0o600)
+	})
+})
+
+test('createFileOnce leaves a file that is already there alone and says it did not make it', () => {
+	inTempFolder((dir) => {
+		const path = join(dir, 'marker')
+		assert.equal(createFileOnce(path, 'first'), true)
+		assert.equal(createFileOnce(path, 'second'), false)
+		assert.equal(readFileSync(path, 'utf8'), 'first')
+	})
+})
+
+test('createFileOnce throws for any other problem, such as a missing folder', () => {
+	inTempFolder((dir) => {
+		assert.throws(() => createFileOnce(join(dir, 'missing', 'marker')), { code: 'ENOENT' })
+	})
+})
+
+test('pruneCacheFiles removes only the old files with the prefix', () => {
+	const left = inFakeHome(`
+		mkdirSync(dir, { recursive: true })
+		const hoursAgo = (hours) => new Date(Date.now() - hours * 60 * 60 * 1000)
+		const plant = (name, age) => {
+			writeFileSync(dir + '/' + name, '')
+			utimesSync(dir + '/' + name, age, age)
+		}
+		plant('mark-old', hoursAgo(25))
+		plant('mark-fresh', hoursAgo(23))
+		plant('other-old', hoursAgo(25))
+		pruneCacheFiles('mark-', 24 * 60 * 60 * 1000)
+		console.log(JSON.stringify(readdirSync(dir).sort()))
+	`)
+	assert.deepEqual(left, ['mark-fresh', 'other-old'])
 })
 
 test('a failed save releases its lock so a subsequent save can proceed', () => {

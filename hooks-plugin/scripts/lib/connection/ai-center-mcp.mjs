@@ -13,12 +13,12 @@ const LIMIT_LOOKUP_TIMEOUT_MS = 3_000
 const DATA_LINE_PREFIX = 'data: '
 
 export class AiCenterError extends Error {
-	constructor({ operation, statusCode, requestId, latencyMs, info }) {
+	constructor({ operation, statusCode, requestId, latencyMs, info, endpoint = MCP_ENDPOINT, method = 'POST' }) {
 		super(info)
 		this.name = 'AiCenterError'
 		this.operation = operation
-		this.endpoint = MCP_ENDPOINT
-		this.method = 'POST'
+		this.endpoint = endpoint
+		this.method = method
 		this.statusCode = statusCode
 		this.requestId = requestId
 		this.latencyMs = latencyMs
@@ -32,47 +32,52 @@ function readErrorInfo(text) {
 	return typeof info === 'string' && info ? info : 'invalid format'
 }
 
-// The request id is the backend's request_id in its log, so a caller that needs it later can choose it up front.
-async function sendJsonRpc(connection, body, timeoutMs = REQUEST_TIMEOUT_MS, requestId = randomUUID()) {
-	const operation = body.method === 'tools/call' ? body.params.name : body.method
+// One request to the backend with the Bearer key, a request id and a time limit.
+async function sendRequest(connection, { method, endpoint, operation, body, timeoutMs, requestId }) {
+	const hasBody = body !== undefined
 	const startedAt = Date.now()
-	const rpcError = (info, statusCode = null) =>
-		new AiCenterError({ operation, statusCode, requestId, latencyMs: Date.now() - startedAt, info })
-
-	let response
-	let text
+	const fail = (info, statusCode = null) =>
+		new AiCenterError({ operation, endpoint, method, statusCode, requestId, latencyMs: Date.now() - startedAt, info })
 	try {
-		response = await fetch(`${connection.baseUrl}${MCP_ENDPOINT}`, {
-			method: 'POST',
+		const response = await fetch(`${connection.baseUrl}${endpoint}`, {
+			method,
 			headers: {
-				'Content-Type': 'application/json',
+				...(hasBody ? { 'Content-Type': 'application/json' } : {}),
 				Accept: 'application/json, text/event-stream',
 				Authorization: `Bearer ${connection.apiKey}`,
 				'x-request-id': requestId,
 			},
-			body: JSON.stringify(body),
+			...(hasBody ? { body: JSON.stringify(body) } : {}),
 			signal: AbortSignal.timeout(timeoutMs),
 		})
-		text = await response.text()
+		return { response, text: await response.text(), fail }
 	} catch (error) {
 		const info = error?.name === 'TimeoutError'
 			? `timeout after ${timeoutMs / 1000}s`
 			: `unreachable (${error?.cause?.code ?? error?.cause?.message ?? errorMessage(error)})`
-		throw rpcError(info)
+		throw fail(info)
 	}
+}
+
+// The request id is the backend's request_id in its log, so a caller that needs it later can choose it up front.
+async function sendJsonRpc(connection, body, timeoutMs = REQUEST_TIMEOUT_MS, requestId = randomUUID()) {
+	const operation = body.method === 'tools/call' ? body.params.name : body.method
+	const { response, text, fail } = await sendRequest(connection, {
+		method: 'POST', endpoint: MCP_ENDPOINT, operation, body, timeoutMs, requestId,
+	})
 
 	const dataLine = text.split('\n').find((line) => line.startsWith(DATA_LINE_PREFIX))
-	if (!dataLine) throw rpcError(readErrorInfo(text), response.status)
+	if (!dataLine) throw fail(readErrorInfo(text), response.status)
 	const dataText = dataLine.slice(DATA_LINE_PREFIX.length)
 	const reply = parseJson(dataText)
-	if (!reply) throw rpcError(readErrorInfo(dataText), response.status)
-	if (reply.error) throw rpcError(reply.error.message ?? JSON.stringify(reply.error), response.status)
+	if (!reply) throw fail(readErrorInfo(dataText), response.status)
+	if (reply.error) throw fail(reply.error.message ?? JSON.stringify(reply.error), response.status)
 	if (reply.result?.isError) {
 		// Only blocks that carry text are shown, and an error with none says so instead of printing "undefined".
 		const texts = (reply.result.content ?? [])
 			.map((block) => block?.text)
 			.filter((text) => typeof text === 'string' && text.length > 0)
-		throw rpcError(`tool error: ${texts.join(' ') || 'no details'}`, response.status)
+		throw fail(`tool error: ${texts.join(' ') || 'no details'}`, response.status)
 	}
 	return reply.result
 }
@@ -178,4 +183,15 @@ export async function fetchUserId(connection) {
 	const { user } = parseToolResult(await callTool(connection, 'get_me', {}))
 	if (!Number.isInteger(user?.id)) throw new Error('ai-center: get_me returned no user id')
 	return user.id
+}
+
+// One GET that gives back the answer's JSON or throws an AiCenterError.
+export async function fetchJson(connection, { endpoint, operation, timeoutMs }) {
+	const { response, text, fail } = await sendRequest(connection, {
+		method: 'GET', endpoint, operation, timeoutMs, requestId: randomUUID(),
+	})
+	if (response.status !== 200) throw fail(readErrorInfo(text), response.status)
+	const body = parseJson(text)
+	if (body === undefined) throw fail('answer is not JSON', response.status)
+	return body
 }

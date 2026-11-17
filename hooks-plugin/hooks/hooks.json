@@ -16,6 +16,16 @@
             "timeout": 20
           }
         ]
+      },
+      {
+        "matcher": "startup|resume|compact|clear|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/notice.mjs\" update",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [

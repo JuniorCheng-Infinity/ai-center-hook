@@ -13,7 +13,7 @@ import {
 import { dirname } from 'node:path'
 
 // Plumbing every hook script needs: reading stdin, small JSON files and file ranges, reading a tool's reply,
-// handing context to the harness, and running a hook.
+// handing context or a notice to the harness, and running a hook.
 // None of it knows how ai-center is reached. The one exception is the variable below, which lives here
 // because runHook reads it and the summarizer, which sets it, already imports this file.
 
@@ -35,6 +35,11 @@ export async function readStdinJson() {
 // The harness adds this text to the model's context.
 export function writeHookContext(hookEventName, additionalContext) {
 	process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext } }))
+}
+
+// The harness shows this text to the user and not to the model.
+export function writeHookNotice(systemMessage) {
+	process.stdout.write(JSON.stringify({ systemMessage }))
 }
 
 // The JSON a tool answered with. A reply without text, or with text that is not JSON, throws.
