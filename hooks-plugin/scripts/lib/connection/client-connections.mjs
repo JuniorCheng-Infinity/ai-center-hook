@@ -74,7 +74,7 @@ function readServerFromConfigToml(configPath) {
 		configPath], { encoding: 'utf8', timeout: 5000 })
 
 		throw new Error(
-			'result',
+			'result' +
 			JSON.stringify(result),
 		)
 
