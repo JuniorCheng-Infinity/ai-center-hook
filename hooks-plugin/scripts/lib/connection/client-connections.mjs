@@ -68,13 +68,36 @@ function readClaudeCodeConnection(cwd) {
 // Reads one config.toml path's [mcp_servers.ai-center] table, or undefined.
 function readServerFromConfigToml(configPath) {
 	if (!existsSync(configPath)) return undefined
-	const result = spawnSync('python3', ['-c',
-		'import json,sys,tomllib; ' +
-			'print(json.dumps(tomllib.load(open(sys.argv[1], "rb")).get("mcp_servers", {}).get("ai-center", {})))',
-		configPath], { encoding: 'utf8', timeout: 5000 })
-	if (result.status !== 0) return undefined
-	const server = JSON.parse(result.stdout)
-	return Object.keys(server).length ? server : undefined
+
+	// This exit code tells Node that Python could not import tomllib.
+	const missingTomllibStatus = 42
+	const script = [
+		'import json, sys',
+		'try:',
+		'	import tomllib',
+		'except ModuleNotFoundError:',
+		`	sys.exit(${missingTomllibStatus})`,
+		'with open(sys.argv[1], "rb") as config:',
+		'	server = tomllib.load(config).get("mcp_servers", {}).get("ai-center", {})',
+		'print(json.dumps(server))',
+	].join('\n')
+	// Windows installations can expose Python as python or through the py launcher.
+	const commands = process.platform === 'win32' ? [['python'], ['py', '-3']] : [['python3']]
+
+	for (const [command, ...args] of commands) {
+		const result = spawnSync(command, [...args, '-c', script, configPath], {
+			encoding: 'utf8',
+			timeout: 5000,
+		})
+
+		if (result.error?.code === 'ENOENT' || result.status === missingTomllibStatus) continue
+		if (result.status !== 0) return undefined
+
+		const server = JSON.parse(result.stdout)
+		return Object.keys(server).length ? server : undefined
+	}
+
+	return undefined
 }
 
 // Codex can name an environment variable that holds the key instead of writing the header out.
