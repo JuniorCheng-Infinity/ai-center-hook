@@ -5,10 +5,11 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { writeFakeFetch } from './fake-ai-center.mjs'
+import { NO_PYTHON_REASON } from './real-python.mjs'
 
 const root = resolve('hooks-plugin')
 
-test('configured Stop command captures Codex and Claude payloads', () => {
+test('configured Stop command captures Codex and Claude payloads', { skip: NO_PYTHON_REASON }, () => {
 	const dir = mkdtempSync(join(tmpdir(), 'ai-center-hooks-test-'))
 	try {
 		const calls = join(dir, 'calls.jsonl')

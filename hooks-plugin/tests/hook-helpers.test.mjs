@@ -8,6 +8,7 @@ import { resolveHookConnection } from '../scripts/lib/connection/client-connecti
 import { parseToolResult, writeHookNotice } from '../scripts/lib/hook-utils.mjs'
 
 import { setupHookRun } from './fake-ai-center.mjs'
+import { NO_PYTHON_REASON } from './real-python.mjs'
 
 const failuresUrl = new URL('../scripts/lib/connection/hook-failures.mjs', import.meta.url).href
 
@@ -26,7 +27,7 @@ test('writeHookNotice prints one JSON object with only a systemMessage', () => {
 	assert.deepEqual(JSON.parse(printed), { systemMessage: 'line one\nline two' })
 })
 
-test('resolveHookConnection finds the connection from the directory in the hook input', () => {
+test('resolveHookConnection finds the connection from the directory in the hook input', { skip: NO_PYTHON_REASON }, () => {
 	const dir = mkdtempSync(join(tmpdir(), 'ai-center-helper-test-'))
 	const names = ['AI_CENTER_BASE_URL', 'AI_CENTER_API_KEY', 'CLAUDE_PROJECT_DIR', 'CLAUDECODE', 'CLAUDE_PLUGIN_ROOT', 'PLUGIN_ROOT']
 	const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]))
